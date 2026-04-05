@@ -1,13 +1,15 @@
 import express from 'express';
 import cors from 'cors';
 import si from 'systeminformation';
+import { execFile } from 'child_process';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 const app = express();
 const port = process.env.PORT || 8787;
 
 app.use(cors());
 
-let lastDisk = null;
 
 // Cache GPU info — si.graphics() takes 30+ seconds on some systems
 let cachedGpu = { model: 'Unknown GPU', utilizationGpu: 0, memoryUsed: 0, memoryTotal: 0, clockCore: 0, vram: 0 };
@@ -84,30 +86,35 @@ async function refreshMemLayout() {
 refreshMemLayout();
 setInterval(refreshMemLayout, 120000);
 
+// Cache disk I/O via PowerShell (si.disksIO returns null on some Windows systems)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const diskScript = path.join(__dirname, 'disk-io.ps1');
+let cachedDiskIO = { readMBs: 0, writeMBs: 0 };
+
+function refreshDiskIO() {
+  execFile('powershell', ['-ExecutionPolicy', 'Bypass', '-File', diskScript], { timeout: 8000 }, (err, stdout) => {
+    if (err) return;
+    const parts = stdout.trim().split(',');
+    const readBytes = parseFloat(parts[0]) || 0;
+    const writeBytes = parseFloat(parts[1]) || 0;
+    cachedDiskIO = {
+      readMBs: readBytes / 1024 / 1024,
+      writeMBs: writeBytes / 1024 / 1024,
+    };
+  });
+}
+refreshDiskIO();
+setInterval(refreshDiskIO, 2000);
+
 async function sampleStats() {
-  const [load, mem, speed, disksIO] = await Promise.all([
+  const [load, mem, speed] = await Promise.all([
     si.currentLoad(),
     si.mem(),
     si.cpuCurrentSpeed(),
-    si.disksIO(),
   ]);
   const temp = { main: null };
-
-  const io = disksIO || { readBytes: 0, writeBytes: 0 };
-
-  const now = Date.now();
-  let readMBs = 0;
-  let writeMBs = 0;
-  if (lastDisk) {
-    const dt = Math.max((now - lastDisk.time) / 1000, 0.001);
-    readMBs = (io.readBytes - lastDisk.readBytes) / dt / 1024 / 1024;
-    writeMBs = (io.writeBytes - lastDisk.writeBytes) / dt / 1024 / 1024;
-  }
-  lastDisk = {
-    time: now,
-    readBytes: io.readBytes,
-    writeBytes: io.writeBytes,
-  };
+  const readMBs = cachedDiskIO.readMBs;
+  const writeMBs = cachedDiskIO.writeMBs;
 
   const cpuLoad = load.currentLoad ?? load.currentload ?? 0;
   const cpuTemp = temp?.main ?? null;
