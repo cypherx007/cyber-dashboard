@@ -4,6 +4,8 @@ A cyberpunk-themed real-time system monitoring dashboard built with React, Expre
 
 ![Dashboard Preview](https://img.shields.io/badge/Platform-Windows-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Node](https://img.shields.io/badge/Node-18%2B-brightgreen)
 
+![Cyber Performance Console](../assets/screenshot.png)
+
 ## Features
 
 - **CPU Monitor** — Real-time load %, per-core utilization, clock speed, temperature
