@@ -3,3 +3,21 @@ dist/
 .vite/
 *.log
 .DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Runtime
+*.pid
+coverage/
