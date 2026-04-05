@@ -40,7 +40,7 @@ export function MonitorCard({
   const bColor = barColor || color;
 
   return (
-    <CyberPanel glowColor={glowColor} className="p-3 flex flex-col gap-2">
+    <CyberPanel glowColor={glowColor} className="p-2 flex flex-col gap-1">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -71,7 +71,7 @@ export function MonitorCard({
         className="tracking-wider"
         style={{
           fontFamily: "'Orbitron', monospace",
-          fontSize: "clamp(18px, 2.5vw, 28px)",
+          fontSize: "clamp(14px, 2vw, 20px)",
           color: color,
           textShadow: `0 0 10px ${color}, 0 0 20px ${color}44`,
           fontWeight: 700,
@@ -129,8 +129,8 @@ export function MonitorCard({
       )}
 
       {/* Chart */}
-      <div className="mt-1">
-        <NeonLineChart data={data} color={color} height={60} maxVal={maxVal} />
+      <div>
+        <NeonLineChart data={data} color={color} height={40} maxVal={maxVal} />
       </div>
     </CyberPanel>
   );

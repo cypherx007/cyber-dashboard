@@ -256,7 +256,7 @@ function LiveIndicator() {
 // ── SSD Monitor (special) ─────────────────────────────────────────────────────
 function SSDCard({ readData, writeData, readSpeed, writeSpeed }: { readData: number[]; writeData: number[]; readSpeed: number; writeSpeed: number }) {
   return (
-    <CyberPanel glowColor="magenta" className="p-3 flex flex-col gap-2">
+    <CyberPanel glowColor="magenta" className="p-2 flex flex-col gap-1">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-1 h-4" style={{ background: "#cc44ff", boxShadow: "0 0 6px #cc44ff" }} />
@@ -621,8 +621,8 @@ export default function App() {
       <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(320px,42%)_1fr] gap-3 p-3"
         style={{ minHeight: 0, overflow: "hidden" }}
       >
-        {/* Left column — scrollable */}
-        <div className="flex flex-col gap-3 overflow-y-auto" style={{ minHeight: 0 }}>
+        {/* Left column — fit all cards */}
+        <div className="flex flex-col gap-2 overflow-hidden" style={{ minHeight: 0 }}>
           {/* CPU */}
           <MonitorCard
             label="CPU"
