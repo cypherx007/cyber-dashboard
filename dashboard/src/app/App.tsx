@@ -10,9 +10,9 @@ const API_BASE = import.meta.env.VITE_API_URL || "";
 type MemStick = { sizeGB: number; type: string; clockSpeed: number; bank: string };
 
 type ApiStats = {
-  cpu: { load: number; speedMHz: number; temp: number | null };
+  cpu: { load: number; speedMHz: number; temp: number | null; cores?: number; physicalCores?: number; brand?: string; perCore?: number[] };
   memory: { usedGB: number; totalGB: number; pressure: number; commitGB: number };
-  gpu: { load: number; vramUsedMB: number; clockMHz: number; model: string };
+  gpu: { load: number; vramUsedMB: number; vramTotalMB?: number; clockMHz: number; model: string };
   disk: { readMBs: number; writeMBs: number };
   memoryLayout?: { sticks: MemStick[]; totalSlots: number; ready: boolean };
 };
@@ -354,6 +354,10 @@ export default function App() {
   const [cpuClock, setCpuClock] = useState(0);
   const [cpuTemp, setCpuTemp] = useState<number | null>(null);
   const [cpuHistory, setCpuHistory] = useState<number[]>(Array(40).fill(0));
+  const [cpuCores, setCpuCores] = useState(0);
+  const [cpuPhysicalCores, setCpuPhysicalCores] = useState(0);
+  const [cpuBrand, setCpuBrand] = useState("");
+  const [cpuPerCore, setCpuPerCore] = useState<number[]>([]);
 
   const [ramUsed, setRamUsed] = useState(0);
   const [ramTotal, setRamTotal] = useState(0);
@@ -363,6 +367,7 @@ export default function App() {
 
   const [gpuVal, setGpuVal] = useState(0);
   const [gpuVram, setGpuVram] = useState(0);
+  const [gpuVramTotal, setGpuVramTotal] = useState(0);
   const [gpuClock, setGpuClock] = useState(0);
   const [gpuHistory, setGpuHistory] = useState<number[]>(Array(40).fill(0));
 
@@ -393,6 +398,10 @@ export default function App() {
           load: 25 + 20 * Math.sin(t * 0.3) + Math.random() * 15,
           speedMHz: 1800 + Math.round(Math.random() * 400),
           temp: 52 + Math.round(Math.random() * 15),
+          cores: 8,
+          physicalCores: 4,
+          brand: "Core™ i5-8250U",
+          perCore: Array.from({ length: 8 }, () => 15 + Math.random() * 50),
         },
         memory: {
           usedGB: 8.2 + Math.random() * 1.5,
@@ -403,6 +412,7 @@ export default function App() {
         gpu: {
           load: 10 + Math.random() * 30,
           vramUsedMB: Math.round(400 + Math.random() * 300),
+          vramTotalMB: 1024,
           clockMHz: Math.round(800 + Math.random() * 200),
           model: "Intel(R) UHD Graphics 620",
         },
@@ -430,6 +440,10 @@ export default function App() {
         setCpuTemp(Math.round(data.cpu.temp));
       }
       setCpuHistory((h) => pushHistory(h, data.cpu.load ?? 0));
+      if (data.cpu.cores) setCpuCores(data.cpu.cores);
+      if (data.cpu.physicalCores) setCpuPhysicalCores(data.cpu.physicalCores);
+      if (data.cpu.brand) setCpuBrand(data.cpu.brand);
+      if (data.cpu.perCore) setCpuPerCore(data.cpu.perCore);
 
       const used = data.memory.usedGB ?? 0;
       const total = data.memory.totalGB ?? 0;
@@ -448,6 +462,7 @@ export default function App() {
       const gpuLoad = data.gpu.load ?? 0;
       setGpuVal(parseFloat(gpuLoad.toFixed(1)));
       setGpuVram(Math.round(data.gpu.vramUsedMB ?? 0));
+      setGpuVramTotal(Math.round(data.gpu.vramTotalMB ?? 0));
       setGpuClock(Math.round(data.gpu.clockMHz ?? 0));
       const knownGpus = [
         "Intel(R) UHD Graphics 620",
@@ -623,9 +638,9 @@ export default function App() {
             barColor="#00d4ff"
             status={cpuStatus}
             extraData={[
-              { label: "CORES", value: "8" },
-              { label: "THREADS", value: "16" },
-              { label: "TDP", value: "65W" },
+              { label: "CORES", value: cpuPhysicalCores > 0 ? String(cpuPhysicalCores) : "---" },
+              { label: "THREADS", value: cpuCores > 0 ? String(cpuCores) : "---" },
+              { label: "MODEL", value: cpuBrand || "---" },
             ]}
           />
 
@@ -665,8 +680,7 @@ export default function App() {
             barColor="#00ff88"
             status={gpuStatus}
             extraData={[
-              { label: "VRAM_TOTAL", value: "2048MB" },
-              { label: "DRIVER", value: "30.0.14" },
+              { label: "VRAM_TOTAL", value: gpuVramTotal > 0 ? `${gpuVramTotal}MB` : "---" },
             ]}
           />
 
@@ -716,7 +730,16 @@ export default function App() {
 
           {/* Memory Matrix */}
           <div className="flex-1 min-h-0">
-            <MemoryMatrix usedGB={ramUsed} totalGB={ramTotal} sticks={ramSticks} />
+            <MemoryMatrix
+              usedGB={ramUsed}
+              totalGB={ramTotal}
+              sticks={ramSticks}
+              cpuPerCore={cpuPerCore}
+              cpuLoad={cpuVal}
+              gpuLoad={gpuVal}
+              gpuVramUsed={gpuVram}
+              gpuVramTotal={gpuVramTotal}
+            />
           </div>
 
           {/* Bottom stats row */}

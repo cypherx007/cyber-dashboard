@@ -10,7 +10,7 @@ app.use(cors());
 let lastDisk = null;
 
 // Cache GPU info — si.graphics() takes 30+ seconds on some systems
-let cachedGpu = { model: 'Unknown GPU', utilizationGpu: 0, memoryUsed: 0, clockCore: 0 };
+let cachedGpu = { model: 'Unknown GPU', utilizationGpu: 0, memoryUsed: 0, memoryTotal: 0, clockCore: 0, vram: 0 };
 let gpuCacheReady = false;
 
 // Fetch GPU info once at startup, then refresh every 60s
@@ -21,7 +21,9 @@ async function refreshGpu() {
     cachedGpu = {
       utilizationGpu: gpu.utilizationGpu ?? gpu.utilization ?? 0,
       memoryUsed: gpu.memoryUsed ?? 0,
+      memoryTotal: gpu.memoryTotal ?? 0,
       clockCore: gpu.clockCore ?? 0,
+      vram: gpu.vram ?? 0,
       model: gpu.model ?? 'Unknown GPU',
     };
     gpuCacheReady = true;
@@ -31,6 +33,30 @@ async function refreshGpu() {
 }
 refreshGpu();
 setInterval(refreshGpu, 60000);
+
+// Cache CPU info — si.cpu() takes ~6s
+let cachedCpuInfo = { brand: 'Unknown', cores: 0, physicalCores: 0, speed: 0 };
+let cpuInfoReady = false;
+
+async function refreshCpuInfo() {
+  try {
+    const cpu = await si.cpu();
+    cachedCpuInfo = {
+      brand: cpu.brand ?? 'Unknown',
+      cores: cpu.cores ?? 0,
+      physicalCores: cpu.physicalCores ?? 0,
+      speed: cpu.speed ?? 0,
+    };
+    cpuInfoReady = true;
+  } catch (e) {
+    console.error('CPU info failed', e);
+  }
+}
+refreshCpuInfo();
+setInterval(refreshCpuInfo, 120000);
+
+// Cache GPU info — also store VRAM total from si.graphics()
+// Note: Intel integrated GPUs don't report utilization/clock/vramUsed
 
 // Cache RAM layout — si.memLayout() can be slow on some systems
 let cachedMemLayout = { sticks: [], totalSlots: 0 };
@@ -86,11 +112,16 @@ async function sampleStats() {
   const cpuLoad = load.currentLoad ?? load.currentload ?? 0;
   const cpuTemp = temp?.main ?? null;
   const cpuSpeedMHz = (speed?.avg ?? 0) * 1000;
+  const perCore = (load.cpus || []).map((c) => c.load ?? 0);
   return {
     cpu: {
-      load: cpuLoad, // %
+      load: cpuLoad,
       speedMHz: cpuSpeedMHz,
       temp: cpuTemp,
+      cores: cachedCpuInfo.cores,
+      physicalCores: cachedCpuInfo.physicalCores,
+      brand: cachedCpuInfo.brand,
+      perCore,
     },
     memory: {
       usedGB: mem.active / 1024 / 1024 / 1024,
@@ -101,6 +132,7 @@ async function sampleStats() {
     gpu: {
       load: cachedGpu.utilizationGpu ?? 0,
       vramUsedMB: cachedGpu.memoryUsed ?? 0,
+      vramTotalMB: cachedGpu.memoryTotal || cachedGpu.vram || 0,
       clockMHz: cachedGpu.clockCore ?? 0,
       model: cachedGpu.model ?? 'Unknown GPU',
     },
