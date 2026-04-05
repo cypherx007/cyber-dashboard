@@ -3,7 +3,7 @@ import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 interface NeonLineChartProps {
   data: number[];
   color: string;
-  height?: number;
+  height?: number | string;
   maxVal?: number;
   fillOpacity?: number;
 }

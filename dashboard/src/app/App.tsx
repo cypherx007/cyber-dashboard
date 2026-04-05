@@ -256,7 +256,7 @@ function LiveIndicator() {
 // ── SSD Monitor (special) ─────────────────────────────────────────────────────
 function SSDCard({ readData, writeData, readSpeed, writeSpeed }: { readData: number[]; writeData: number[]; readSpeed: number; writeSpeed: number }) {
   return (
-    <CyberPanel glowColor="magenta" className="p-2 flex flex-col gap-1">
+    <CyberPanel glowColor="magenta" className="flex-1 min-h-0 p-2 flex flex-col gap-0.5 overflow-hidden">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-1 h-4" style={{ background: "#cc44ff", boxShadow: "0 0 6px #cc44ff" }} />
@@ -272,31 +272,30 @@ function SSDCard({ readData, writeData, readSpeed, writeSpeed }: { readData: num
 
       <div className="flex gap-4">
         <div>
-          <div className="text-xs mb-0.5" style={{ fontFamily: "'Share Tech Mono', monospace", color: "#2a8a5a", letterSpacing: "1px" }}>▲ READ</div>
-          <div style={{ fontFamily: "'Orbitron', monospace", color: "#00ff88", fontSize: "16px", fontWeight: 700, textShadow: "0 0 10px #00ff88" }}>
-            {readSpeed.toFixed(1)} <span style={{ fontSize: "10px", color: "#2a8a6a" }}>MB/s</span>
-          </div>
+          <span className="text-[9px]" style={{ fontFamily: "'Share Tech Mono', monospace", color: "#2a8a5a", letterSpacing: "1px" }}>▲ READ </span>
+          <span style={{ fontFamily: "'Orbitron', monospace", color: "#00ff88", fontSize: "13px", fontWeight: 700, textShadow: "0 0 10px #00ff88" }}>
+            {readSpeed.toFixed(1)} <span style={{ fontSize: "9px", color: "#2a8a6a" }}>MB/s</span>
+          </span>
         </div>
         <div>
-          <div className="text-xs mb-0.5" style={{ fontFamily: "'Share Tech Mono', monospace", color: "#8a2a6a", letterSpacing: "1px" }}>▼ WRITE</div>
-          <div style={{ fontFamily: "'Orbitron', monospace", color: "#ff44aa", fontSize: "16px", fontWeight: 700, textShadow: "0 0 10px #ff44aa" }}>
-            {writeSpeed.toFixed(1)} <span style={{ fontSize: "10px", color: "#6a2a5a" }}>MB/s</span>
-          </div>
+          <span className="text-[9px]" style={{ fontFamily: "'Share Tech Mono', monospace", color: "#8a2a6a", letterSpacing: "1px" }}>▼ WRITE </span>
+          <span style={{ fontFamily: "'Orbitron', monospace", color: "#ff44aa", fontSize: "13px", fontWeight: 700, textShadow: "0 0 10px #ff44aa" }}>
+            {writeSpeed.toFixed(1)} <span style={{ fontSize: "9px", color: "#6a2a5a" }}>MB/s</span>
+          </span>
         </div>
       </div>
 
       {/* Dual charts stacked */}
-      <div className="flex flex-col gap-1">
-        <div style={{ height: "28px" }}>
-          <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: "9px", color: "#2a6a4a" }}>READ</span>
-          <div style={{ height: "22px" }}>
-            {/* mini recharts inline */}
+      <div className="flex-1 min-h-0 flex flex-col gap-0.5">
+        <div className="flex-1 min-h-0 flex flex-col">
+          <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: "8px", color: "#2a6a4a" }}>READ</span>
+          <div className="flex-1 min-h-0">
             <MiniBarChart data={readData} color="#00ff88" />
           </div>
         </div>
-        <div style={{ height: "28px" }}>
-          <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: "9px", color: "#6a2a5a" }}>WRITE</span>
-          <div style={{ height: "22px" }}>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: "8px", color: "#6a2a5a" }}>WRITE</span>
+          <div className="flex-1 min-h-0">
             <MiniBarChart data={writeData} color="#ff44aa" />
           </div>
         </div>
