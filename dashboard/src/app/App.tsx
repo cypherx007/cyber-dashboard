@@ -741,6 +741,7 @@ export default function App() {
               gpuVramTotal={gpuVramTotal}
               ssdRead={ssdRead}
               ssdWrite={ssdWrite}
+              diskLabel={disk}
             />
           </div>
 

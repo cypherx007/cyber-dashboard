@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 
-type MatrixMode = "SSD" | "CPU" | "RAM" | "GPU";
+type MatrixMode = "DISK" | "CPU" | "RAM" | "GPU";
 
 interface MemStick {
   sizeGB: number;
@@ -25,6 +25,7 @@ interface MemoryMatrixProps {
   gpuVramTotal?: number;
   ssdRead?: number;
   ssdWrite?: number;
+  diskLabel?: string;
 }
 
 function activityColor(a: number): string {
@@ -66,7 +67,7 @@ function activityColorForMode(a: number, mode: MatrixMode): string {
     if (a < 0.95) return "#00dd88";
     return "#00ff88";
   }
-  if (mode === "SSD") {
+  if (mode === "DISK") {
     if (a < 0.1) return "#050014";
     if (a < 0.3) return "#0d0028";
     if (a < 0.5) return "#1a0050";
@@ -94,7 +95,9 @@ export function MemoryMatrix({
   gpuVramTotal = 0,
   ssdRead = 0,
   ssdWrite = 0,
+  diskLabel = "",
 }: MemoryMatrixProps) {
+  const diskType = diskLabel.includes("HDD") ? "HDD" : "SSD";
   const [mode, setMode] = useState<MatrixMode>("RAM");
   const [viewMode, setViewMode] = useState<"PAGE" | "COMMIT">("PAGE");
   const [cells, setCells] = useState<CellData[][]>(
@@ -239,9 +242,9 @@ export function MemoryMatrix({
     return () => clearInterval(interval);
   }, [mode, viewMode, usedGB, totalGB, commitGB, cpuPerCore, cpuLoad, gpuLoad, gpuVramUsed, gpuVramTotal, ssdRead, ssdWrite]);
 
-  const modes: MatrixMode[] = ["SSD", "CPU", "RAM", "GPU"];
+  const modes: MatrixMode[] = ["DISK", "CPU", "RAM", "GPU"];
   const modeColors: Record<MatrixMode, string> = {
-    SSD: "#cc44ff",
+    DISK: "#cc44ff",
     CPU: "#00d4ff",
     RAM: "#ffcc00",
     GPU: "#00ff88",
@@ -327,10 +330,11 @@ export function MemoryMatrix({
           };
         }
       }
-      case "SSD": {
+      case "DISK": {
+        const shortDisk = diskLabel ? diskLabel.split(" ")[0] : "";
         if (viewMode === "PAGE") {
           return {
-            header: `R: ${ssdRead.toFixed(1)} / W: ${ssdWrite.toFixed(1)} MB/s`,
+            header: `${shortDisk} R: ${ssdRead.toFixed(1)} / W: ${ssdWrite.toFixed(1)} MB/s`,
             stats: {
               left: `READ: ${ssdRead.toFixed(1)} MB/s (TOP)`,
               right: `WRITE: ${ssdWrite.toFixed(1)} MB/s (BTM)`,
@@ -341,7 +345,7 @@ export function MemoryMatrix({
         } else {
           const totalSpeed = ssdRead + ssdWrite;
           return {
-            header: `THROUGHPUT ${totalSpeed.toFixed(1)} MB/s`,
+            header: `${shortDisk} THROUGHPUT ${totalSpeed.toFixed(1)} MB/s`,
             stats: {
               left: `COMBINED: ${totalSpeed.toFixed(1)} MB/s`,
               right: `R: ${ssdRead.toFixed(1)} + W: ${ssdWrite.toFixed(1)}`,
@@ -360,7 +364,7 @@ export function MemoryMatrix({
       case "RAM": return "PHYSICAL";
       case "CPU": return "PER-CORE";
       case "GPU": return "COMPUTE";
-      case "SSD": return "R / W";
+      case "DISK": return "R / W";
     }
   })();
   const commitLabel = (() => {
@@ -368,7 +372,7 @@ export function MemoryMatrix({
       case "RAM": return "COMMIT";
       case "CPU": return "AGGREGATE";
       case "GPU": return "VRAM";
-      case "SSD": return "THROUGHPUT";
+      case "DISK": return "THROUGHPUT";
     }
   })();
 
@@ -390,7 +394,7 @@ export function MemoryMatrix({
               clipPath: "polygon(4px 0%, calc(100% - 4px) 0%, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0% calc(100% - 4px), 0% 4px)",
             }}
           >
-            {m}
+            {m === "DISK" ? diskType : m}
           </button>
         ))}
       </div>
@@ -427,7 +431,7 @@ export function MemoryMatrix({
           borderBottom: "1px solid #0a2a3a",
         }}
       >
-        {mode}_BANKS // {modeInfo.header}
+        {mode === "DISK" ? diskType : mode}_BANKS // {modeInfo.header}
       </div>
 
       {/* Stats line */}
@@ -455,7 +459,7 @@ export function MemoryMatrix({
             const cellsPerCore = coreCount > 0 ? Math.floor(TOTAL_CELLS / coreCount) : 0;
             const isCpuBoundary = mode === "CPU" && viewMode === "PAGE" && cellsPerCore > 0 && cellIdx > 0 && cellIdx % cellsPerCore === 0 && ci === 0;
             const isRamBoundary = mode === "RAM" && dimmBoundaries.has(cellIdx) && ci === 0;
-            const isSsdBoundary = mode === "SSD" && viewMode === "PAGE" && cellIdx === TOTAL_CELLS / 2 && ci === 0;
+            const isSsdBoundary = mode === "DISK" && viewMode === "PAGE" && cellIdx === TOTAL_CELLS / 2 && ci === 0;
 
             return (
               <div
