@@ -1,15 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 type MatrixMode = "SSD" | "CPU" | "RAM" | "GPU";
+
+interface MemStick {
+  sizeGB: number;
+  type: string;
+  clockSpeed: number;
+  bank: string;
+}
 
 interface CellData {
   activity: number; // 0-1
 }
 
-function generateCells(rows: number, cols: number): CellData[][] {
-  return Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => ({ activity: Math.random() }))
-  );
+interface MemoryMatrixProps {
+  usedGB?: number;
+  totalGB?: number;
+  sticks?: MemStick[];
 }
 
 function activityColor(a: number): string {
@@ -56,25 +63,63 @@ function activityColorForMode(a: number, mode: MatrixMode): string {
 
 const ROWS = 8;
 const COLS = 16;
+const TOTAL_CELLS = ROWS * COLS;
 
-export function MemoryMatrix() {
+export function MemoryMatrix({ usedGB = 0, totalGB = 0, sticks = [] }: MemoryMatrixProps) {
   const [mode, setMode] = useState<MatrixMode>("RAM");
   const [viewMode, setViewMode] = useState<"PAGE" | "COMMIT">("PAGE");
-  const [cells, setCells] = useState<CellData[][]>(generateCells(ROWS, COLS));
+  const [cells, setCells] = useState<CellData[][]>(
+    Array.from({ length: ROWS }, () =>
+      Array.from({ length: COLS }, () => ({ activity: Math.random() * 0.1 }))
+    )
+  );
 
+  // Compute DIMM boundary cell indices
+  const dimmBoundaries = useMemo(() => {
+    if (sticks.length <= 1) return new Set<number>();
+    const totalStickGB = sticks.reduce((s, st) => s + st.sizeGB, 0);
+    if (totalStickGB <= 0) return new Set<number>();
+    const bounds = new Set<number>();
+    let cumGB = 0;
+    for (let i = 0; i < sticks.length - 1; i++) {
+      cumGB += sticks[i].sizeGB;
+      const boundaryCell = Math.round((cumGB / totalStickGB) * TOTAL_CELLS);
+      bounds.add(boundaryCell);
+    }
+    return bounds;
+  }, [sticks]);
+
+  // Animate cells based on real RAM data
   useEffect(() => {
     const interval = setInterval(() => {
-      setCells((prev) =>
-        prev.map((row) =>
-          row.map((cell) => {
-            const delta = (Math.random() - 0.5) * 0.3;
-            return { activity: Math.max(0, Math.min(1, cell.activity + delta)) };
+      setCells(() => {
+        const hasData = totalGB > 0;
+        const usedCount = hasData ? Math.round((usedGB / totalGB) * TOTAL_CELLS) : 0;
+
+        let idx = 0;
+        return Array.from({ length: ROWS }, () =>
+          Array.from({ length: COLS }, () => {
+            const cellIdx = idx++;
+            if (!hasData) {
+              // No data yet — subtle random animation
+              return { activity: Math.random() * 0.15 };
+            }
+            if (cellIdx < usedCount) {
+              // Used cell: bright with jitter
+              const base = 0.55 + Math.random() * 0.4;
+              const jitter = (Math.random() - 0.5) * 0.08;
+              return { activity: Math.max(0.4, Math.min(1, base + jitter)) };
+            } else {
+              // Free cell: very dim
+              const base = 0.04 + Math.random() * 0.08;
+              return { activity: Math.max(0, Math.min(0.15, base)) };
+            }
           })
-        )
-      );
-    }, 600);
+        );
+      });
+    }, 800);
     return () => clearInterval(interval);
-  }, []);
+  }, [usedGB, totalGB]);
 
   const modes: MatrixMode[] = ["SSD", "CPU", "RAM", "GPU"];
   const modeColors: Record<MatrixMode, string> = {
@@ -83,6 +128,12 @@ export function MemoryMatrix() {
     RAM: "#ffcc00",
     GPU: "#00ff88",
   };
+
+  const gbPerCell = totalGB > 0 ? totalGB / TOTAL_CELLS : 0;
+  const usedCount = totalGB > 0 ? Math.round((usedGB / totalGB) * TOTAL_CELLS) : 0;
+  const headerInfo = sticks.length > 0
+    ? `${sticks.length} DIMMs // ${totalGB.toFixed(0)}GB`
+    : `${TOTAL_CELLS} SLOTS`;
 
   return (
     <div className="flex flex-col gap-2 h-full">
@@ -144,8 +195,16 @@ export function MemoryMatrix() {
           borderBottom: "1px solid #0a2a3a",
         }}
       >
-        MEM_BANKS // {ROWS * COLS} SLOTS
+        MEM_BANKS // {headerInfo}
       </div>
+
+      {/* Used/Free counter */}
+      {totalGB > 0 && (
+        <div className="flex justify-between px-1" style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: "9px" }}>
+          <span style={{ color: modeColors[mode] }}>USED: {usedCount}/{TOTAL_CELLS} BLOCKS ({usedGB.toFixed(1)}GB)</span>
+          <span style={{ color: "#2a5a7a" }}>FREE: {TOTAL_CELLS - usedCount} ({(totalGB - usedGB).toFixed(1)}GB)</span>
+        </div>
+      )}
 
       {/* Cell grid */}
       <div
@@ -157,8 +216,11 @@ export function MemoryMatrix() {
       >
         {cells.map((row, ri) =>
           row.map((cell, ci) => {
+            const cellIdx = ri * COLS + ci;
             const color = activityColorForMode(cell.activity, mode);
             const isHot = cell.activity > 0.8;
+            const isBoundaryStart = dimmBoundaries.has(cellIdx) && ci === 0;
+
             return (
               <div
                 key={`${ri}-${ci}`}
@@ -167,8 +229,13 @@ export function MemoryMatrix() {
                   background: color,
                   boxShadow: isHot ? `0 0 4px ${color}` : "none",
                   minHeight: "6px",
+                  borderTop: isBoundaryStart ? `1px solid ${modeColors[mode]}66` : "none",
                 }}
-                title={`${Math.round(cell.activity * 100)}%`}
+                title={
+                  totalGB > 0
+                    ? `Block ${cellIdx}: ${(cellIdx * gbPerCell).toFixed(2)}-${((cellIdx + 1) * gbPerCell).toFixed(2)} GB | ${cellIdx < usedCount ? "USED" : "FREE"}`
+                    : `${Math.round(cell.activity * 100)}%`
+                }
               />
             );
           })
@@ -177,11 +244,11 @@ export function MemoryMatrix() {
 
       {/* Legend */}
       <div className="flex items-center gap-1 px-1">
-        <span style={{ fontFamily: "'Share Tech Mono', monospace", color: "#2a5a7a", fontSize: "9px" }}>IDLE</span>
+        <span style={{ fontFamily: "'Share Tech Mono', monospace", color: "#2a5a7a", fontSize: "9px" }}>FREE</span>
         <div className="flex-1 h-[4px] rounded" style={{
           background: `linear-gradient(to right, #0a1a0a, ${modeColors[mode]})`,
         }} />
-        <span style={{ fontFamily: "'Share Tech Mono', monospace", color: modeColors[mode], fontSize: "9px" }}>ACTIVE</span>
+        <span style={{ fontFamily: "'Share Tech Mono', monospace", color: modeColors[mode], fontSize: "9px" }}>USED</span>
       </div>
     </div>
   );

@@ -32,6 +32,32 @@ async function refreshGpu() {
 refreshGpu();
 setInterval(refreshGpu, 60000);
 
+// Cache RAM layout — si.memLayout() can be slow on some systems
+let cachedMemLayout = { sticks: [], totalSlots: 0 };
+let memLayoutReady = false;
+
+async function refreshMemLayout() {
+  try {
+    const layout = await si.memLayout();
+    const sticks = (layout || []).map((dimm) => ({
+      sizeGB: (dimm.size ?? 0) / 1073741824,
+      type: dimm.type ?? 'Unknown',
+      clockSpeed: dimm.clockSpeed ?? 0,
+      bank: dimm.bank ?? '',
+    }));
+    const count = sticks.length;
+    cachedMemLayout = {
+      sticks,
+      totalSlots: count <= 2 ? 4 : count + (count % 2),
+    };
+    memLayoutReady = true;
+  } catch (e) {
+    console.error('memLayout failed', e);
+  }
+}
+refreshMemLayout();
+setInterval(refreshMemLayout, 120000);
+
 async function sampleStats() {
   const [load, mem, speed, disksIO] = await Promise.all([
     si.currentLoad(),
@@ -81,6 +107,11 @@ async function sampleStats() {
     disk: {
       readMBs: readMBs,
       writeMBs: writeMBs,
+    },
+    memoryLayout: {
+      sticks: cachedMemLayout.sticks,
+      totalSlots: cachedMemLayout.totalSlots,
+      ready: memLayoutReady,
     },
   };
 }

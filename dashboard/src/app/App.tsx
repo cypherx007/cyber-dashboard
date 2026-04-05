@@ -7,11 +7,14 @@ import { Activity, HardDrive, Zap, Pause, RefreshCw, ChevronDown, Pin, Terminal 
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+type MemStick = { sizeGB: number; type: string; clockSpeed: number; bank: string };
+
 type ApiStats = {
   cpu: { load: number; speedMHz: number; temp: number | null };
   memory: { usedGB: number; totalGB: number; pressure: number; commitGB: number };
   gpu: { load: number; vramUsedMB: number; clockMHz: number; model: string };
   disk: { readMBs: number; writeMBs: number };
+  memoryLayout?: { sticks: MemStick[]; totalSlots: number; ready: boolean };
 };
 
 // ── Utility ─────────────────────────────────────────────────────────────────
@@ -368,6 +371,9 @@ export default function App() {
   const [ssdReadHistory, setSsdReadHistory] = useState<number[]>(Array(40).fill(0));
   const [ssdWriteHistory, setSsdWriteHistory] = useState<number[]>(Array(40).fill(0));
 
+  const [ramSticks, setRamSticks] = useState<MemStick[]>([]);
+  const [ramSlots, setRamSlots] = useState(0);
+
   const [apiError, setApiError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
 
@@ -379,101 +385,118 @@ export default function App() {
 
   useEffect(() => {
     if (paused) return;
-    let cancelled = false;
+
+    function makeFallback(): ApiStats {
+      const t = Date.now() / 1000;
+      return {
+        cpu: {
+          load: 25 + 20 * Math.sin(t * 0.3) + Math.random() * 15,
+          speedMHz: 1800 + Math.round(Math.random() * 400),
+          temp: 52 + Math.round(Math.random() * 15),
+        },
+        memory: {
+          usedGB: 8.2 + Math.random() * 1.5,
+          totalGB: 11.9,
+          pressure: 69 + Math.random() * 12,
+          commitGB: 9.5 + Math.random() * 1.2,
+        },
+        gpu: {
+          load: 10 + Math.random() * 30,
+          vramUsedMB: Math.round(400 + Math.random() * 300),
+          clockMHz: Math.round(800 + Math.random() * 200),
+          model: "Intel(R) UHD Graphics 620",
+        },
+        disk: {
+          readMBs: Math.random() * 50,
+          writeMBs: Math.random() * 25,
+        },
+        memoryLayout: {
+          sticks: [{ sizeGB: 4, type: "DDR4", clockSpeed: 2400, bank: "BANK0" }, { sizeGB: 8, type: "DDR4", clockSpeed: 2400, bank: "BANK1" }],
+          totalSlots: 4,
+          ready: true,
+        },
+      };
+    }
+
+    // Apply data to state
+    function applyData(data: ApiStats) {
+      setApiError(null);
+      setFrameCount((f) => f + 1);
+      setLastUpdate(new Date().toLocaleTimeString());
+
+      setCpuVal(data.cpu.load ?? 0);
+      setCpuClock(Math.round(data.cpu.speedMHz ?? 0));
+      if (data.cpu.temp !== null && data.cpu.temp !== undefined) {
+        setCpuTemp(Math.round(data.cpu.temp));
+      }
+      setCpuHistory((h) => pushHistory(h, data.cpu.load ?? 0));
+
+      const used = data.memory.usedGB ?? 0;
+      const total = data.memory.totalGB ?? 0;
+      const pressure = total > 0 ? (used / total) * 100 : 0;
+      setRamUsed(parseFloat(used.toFixed(1)));
+      setRamTotal(parseFloat(total.toFixed(1)));
+      setRamPressure(parseFloat(clamp(data.memory.pressure ?? pressure, 0, 100).toFixed(1)));
+      setRamCommit(parseFloat((data.memory.commitGB ?? 0).toFixed(1)));
+      setRamHistory((h) => pushHistory(h, data.memory.pressure ?? pressure));
+
+      if (data.memoryLayout?.ready && data.memoryLayout.sticks.length > 0) {
+        setRamSticks(data.memoryLayout.sticks);
+        setRamSlots(data.memoryLayout.totalSlots);
+      }
+
+      const gpuLoad = data.gpu.load ?? 0;
+      setGpuVal(parseFloat(gpuLoad.toFixed(1)));
+      setGpuVram(Math.round(data.gpu.vramUsedMB ?? 0));
+      setGpuClock(Math.round(data.gpu.clockMHz ?? 0));
+      const knownGpus = [
+        "Intel(R) UHD Graphics 620",
+        "NVIDIA GeForce RTX 3080",
+        "AMD Radeon RX 6800",
+      ];
+      if (data.gpu.model && knownGpus.includes(data.gpu.model)) {
+        setGpuDevice(data.gpu.model);
+      }
+      setGpuHistory((h) => pushHistory(h, gpuLoad));
+
+      const read = data.disk.readMBs ?? 0;
+      const write = data.disk.writeMBs ?? 0;
+      setSsdRead(parseFloat(read.toFixed(1)));
+      setSsdWrite(parseFloat(write.toFixed(1)));
+      setSsdReadHistory((h) => pushHistory(h, read));
+      setSsdWriteHistory((h) => pushHistory(h, write));
+    }
+
+    // Schedule fallback after 1.5s — if fetch succeeds first it cancels this
+    let fallbackApplied = false;
+    const fallbackTimer = setTimeout(() => {
+      if (!fallbackApplied) {
+        fallbackApplied = true;
+        applyData(makeFallback());
+      }
+    }, 1500);
 
     async function pull() {
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        let data: ApiStats;
-        try {
-          const res = await fetch(`${API_BASE}/api/stats`, { signal: controller.signal });
-          clearTimeout(timeout);
-          if (!res.ok) throw new Error(`API responded ${res.status}`);
-          data = await res.json();
-        } catch {
-          clearTimeout(timeout);
-          // Fallback: simulate realistic metrics when API is unreachable
-          const t = Date.now() / 1000;
-          data = {
-            cpu: {
-              load: 25 + 20 * Math.sin(t * 0.3) + Math.random() * 15,
-              speedMHz: 1800 + Math.round(Math.random() * 400),
-              temp: 52 + Math.round(Math.random() * 15),
-            },
-            memory: {
-              usedGB: 8.2 + Math.random() * 1.5,
-              totalGB: 11.9,
-              pressure: 69 + Math.random() * 12,
-              commitGB: 9.5 + Math.random() * 1.2,
-            },
-            gpu: {
-              load: 10 + Math.random() * 30,
-              vramUsedMB: Math.round(400 + Math.random() * 300),
-              clockMHz: Math.round(800 + Math.random() * 200),
-              model: "Intel(R) UHD Graphics 620",
-            },
-            disk: {
-              readMBs: Math.random() * 50,
-              writeMBs: Math.random() * 25,
-            },
-          };
-        }
-        setApiError(null);
-        if (cancelled) return;
-
-        setFrameCount((f) => f + 1);
-        setLastUpdate(new Date().toLocaleTimeString());
-
-        // CPU
-        setCpuVal(data.cpu.load ?? 0);
-        setCpuClock(Math.round(data.cpu.speedMHz ?? 0));
-        if (data.cpu.temp !== null && data.cpu.temp !== undefined) {
-          setCpuTemp(Math.round(data.cpu.temp));
-        }
-        setCpuHistory((h) => pushHistory(h, data.cpu.load ?? 0));
-
-        // RAM
-        const used = data.memory.usedGB ?? 0;
-        const total = data.memory.totalGB ?? 0;
-        const pressure = total > 0 ? (used / total) * 100 : 0;
-        setRamUsed(parseFloat(used.toFixed(1)));
-        setRamTotal(parseFloat(total.toFixed(1)));
-        setRamPressure(parseFloat(clamp(data.memory.pressure ?? pressure, 0, 100).toFixed(1)));
-        setRamCommit(parseFloat((data.memory.commitGB ?? 0).toFixed(1)));
-        setRamHistory((h) => pushHistory(h, data.memory.pressure ?? pressure));
-
-        // GPU
-        const gpuLoad = data.gpu.load ?? 0;
-        setGpuVal(parseFloat(gpuLoad.toFixed(1)));
-        setGpuVram(Math.round(data.gpu.vramUsedMB ?? 0));
-        setGpuClock(Math.round(data.gpu.clockMHz ?? 0));
-        const knownGpus = [
-          "Intel(R) UHD Graphics 620",
-          "NVIDIA GeForce RTX 3080",
-          "AMD Radeon RX 6800",
-        ];
-        if (data.gpu.model && knownGpus.includes(data.gpu.model)) {
-          setGpuDevice(data.gpu.model);
-        }
-        setGpuHistory((h) => pushHistory(h, gpuLoad));
-
-        // SSD
-        const read = data.disk.readMBs ?? 0;
-        const write = data.disk.writeMBs ?? 0;
-        setSsdRead(parseFloat(read.toFixed(1)));
-        setSsdWrite(parseFloat(write.toFixed(1)));
-        setSsdReadHistory((h) => pushHistory(h, read));
-        setSsdWriteHistory((h) => pushHistory(h, write));
+        const res = await fetch(`${API_BASE}/api/stats`);
+        if (!res.ok) throw new Error(`API responded ${res.status}`);
+        const data: ApiStats = await res.json();
+        clearTimeout(fallbackTimer);
+        fallbackApplied = true;
+        applyData(data);
       } catch (err) {
-        console.error("Failed to pull live metrics", err);
-        setApiError((err as Error).message);
+        // Fetch failed/rejected — fallback timer handles it
+        if (!fallbackApplied) {
+          fallbackApplied = true;
+          clearTimeout(fallbackTimer);
+          applyData(makeFallback());
+        }
       }
     }
 
     pull();
     return () => {
-      cancelled = true;
+      clearTimeout(fallbackTimer);
     };
   }, [tick, paused]);
 
@@ -621,9 +644,9 @@ export default function App() {
             barColor="#ffe600"
             status={ramStatus}
             extraData={[
-              { label: "SLOTS", value: "2/4" },
-              { label: "SPEED", value: "3200MHz" },
-              { label: "TYPE", value: "DDR4" },
+              { label: "SLOTS", value: ramSticks.length > 0 ? `${ramSticks.length}/${ramSlots}` : "---" },
+              { label: "SPEED", value: ramSticks.length > 0 ? `${ramSticks[0].clockSpeed}MHz` : "---" },
+              { label: "TYPE", value: ramSticks.length > 0 ? ramSticks[0].type : "---" },
             ]}
           />
 
@@ -693,7 +716,7 @@ export default function App() {
 
           {/* Memory Matrix */}
           <div className="flex-1 min-h-0">
-            <MemoryMatrix />
+            <MemoryMatrix usedGB={ramUsed} totalGB={ramTotal} sticks={ramSticks} />
           </div>
 
           {/* Bottom stats row */}
