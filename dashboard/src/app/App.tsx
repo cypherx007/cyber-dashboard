@@ -521,7 +521,7 @@ export default function App() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col overflow-hidden"
+      className="h-screen w-full flex flex-col overflow-hidden"
       style={{ background: "#000810", fontFamily: "'Share Tech Mono', monospace" }}
     >
       <MatrixRain />
@@ -618,11 +618,11 @@ export default function App() {
       </div>
 
       {/* ── Main content ── */}
-      <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(320px,42%)_1fr] gap-3 p-3 overflow-auto"
-        style={{ minHeight: 0 }}
+      <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(320px,42%)_1fr] gap-3 p-3"
+        style={{ minHeight: 0, overflow: "hidden" }}
       >
-        {/* Left column */}
-        <div className="flex flex-col gap-3">
+        {/* Left column — scrollable */}
+        <div className="flex flex-col gap-3 overflow-y-auto" style={{ minHeight: 0 }}>
           {/* CPU */}
           <MonitorCard
             label="CPU"
@@ -694,7 +694,7 @@ export default function App() {
         </div>
 
         {/* Right column: Memory Matrix */}
-        <CyberPanel glowColor="cyan" className="p-3 flex flex-col gap-2 min-h-[400px]">
+        <CyberPanel glowColor="cyan" className="p-3 flex flex-col gap-2 min-h-0 overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-1">
             <div>
