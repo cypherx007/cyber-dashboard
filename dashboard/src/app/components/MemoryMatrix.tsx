@@ -196,37 +196,39 @@ export function MemoryMatrix({
               }
             }
 
-            // SSD mode
+            // SSD mode — use log scale so even small I/O is visible
+            // logScale: 0 MB/s -> 0, 0.1 -> ~0.15, 1 -> ~0.35, 10 -> ~0.6, 100 -> ~0.85, 500 -> 1.0
+            function logScale(speed: number): number {
+              if (speed <= 0) return 0;
+              return Math.min(Math.log10(speed + 1) / Math.log10(500), 1);
+            }
+
             if (viewMode === "PAGE") {
-              // PAGE: read activity — intensity based on read speed
-              const maxSpeed = 200;
-              const readIntensity = Math.min(ssdRead / maxSpeed, 1);
+              // PAGE: top half = read, bottom half = write
               const halfCells = TOTAL_CELLS / 2;
               if (cellIdx < halfCells) {
-                // Top half: read
-                const filled = Math.round(readIntensity * halfCells);
+                const readRatio = logScale(ssdRead);
+                const filled = Math.max(ssdRead > 0 ? 1 : 0, Math.round(readRatio * halfCells));
                 if (cellIdx < filled) {
-                  return { activity: Math.max(0.4, Math.min(1, 0.5 + readIntensity * 0.5 + jitter)) };
+                  return { activity: Math.max(0.4, Math.min(1, 0.5 + readRatio * 0.5 + jitter)) };
                 }
                 return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
               } else {
-                // Bottom half: write
-                const writeIntensity = Math.min(ssdWrite / maxSpeed, 1);
-                const filled = Math.round(writeIntensity * halfCells);
+                const writeRatio = logScale(ssdWrite);
+                const filled = Math.max(ssdWrite > 0 ? 1 : 0, Math.round(writeRatio * halfCells));
                 const posInHalf = cellIdx - halfCells;
                 if (posInHalf < filled) {
-                  return { activity: Math.max(0.4, Math.min(1, 0.5 + writeIntensity * 0.5 + jitter)) };
+                  return { activity: Math.max(0.4, Math.min(1, 0.5 + writeRatio * 0.5 + jitter)) };
                 }
                 return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
               }
             } else {
-              // COMMIT: combined throughput view
+              // COMMIT: combined throughput
               const totalSpeed = ssdRead + ssdWrite;
-              const maxSpeed = 400;
-              const intensity = Math.min(totalSpeed / maxSpeed, 1);
-              const usedCount = Math.round(intensity * TOTAL_CELLS);
+              const ratio = logScale(totalSpeed);
+              const usedCount = Math.max(totalSpeed > 0 ? 1 : 0, Math.round(ratio * TOTAL_CELLS));
               if (cellIdx < usedCount) {
-                return { activity: Math.max(0.4, Math.min(1, 0.5 + intensity * 0.5 + jitter)) };
+                return { activity: Math.max(0.4, Math.min(1, 0.5 + ratio * 0.5 + jitter)) };
               }
               return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
             }
