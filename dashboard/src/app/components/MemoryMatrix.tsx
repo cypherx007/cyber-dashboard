@@ -16,12 +16,15 @@ interface CellData {
 interface MemoryMatrixProps {
   usedGB?: number;
   totalGB?: number;
+  commitGB?: number;
   sticks?: MemStick[];
   cpuPerCore?: number[];
   cpuLoad?: number;
   gpuLoad?: number;
   gpuVramUsed?: number;
   gpuVramTotal?: number;
+  ssdRead?: number;
+  ssdWrite?: number;
 }
 
 function activityColor(a: number): string {
@@ -82,12 +85,15 @@ const TOTAL_CELLS = ROWS * COLS;
 export function MemoryMatrix({
   usedGB = 0,
   totalGB = 0,
+  commitGB = 0,
   sticks = [],
   cpuPerCore = [],
   cpuLoad = 0,
   gpuLoad = 0,
   gpuVramUsed = 0,
   gpuVramTotal = 0,
+  ssdRead = 0,
+  ssdWrite = 0,
 }: MemoryMatrixProps) {
   const [mode, setMode] = useState<MatrixMode>("RAM");
   const [viewMode, setViewMode] = useState<"PAGE" | "COMMIT">("PAGE");
@@ -111,7 +117,7 @@ export function MemoryMatrix({
     return bounds;
   }, [sticks]);
 
-  // Animate cells based on mode
+  // Animate cells based on mode + viewMode
   useEffect(() => {
     const interval = setInterval(() => {
       setCells(() => {
@@ -122,51 +128,114 @@ export function MemoryMatrix({
             const jitter = (Math.random() - 0.5) * 0.08;
 
             if (mode === "RAM") {
-              const hasData = totalGB > 0;
-              const usedCount = hasData ? Math.round((usedGB / totalGB) * TOTAL_CELLS) : 0;
-              if (!hasData) return { activity: Math.random() * 0.15 };
-              if (cellIdx < usedCount) {
-                return { activity: Math.max(0.4, Math.min(1, 0.55 + Math.random() * 0.4 + jitter)) };
+              if (viewMode === "PAGE") {
+                // PAGE: active/physical memory usage
+                const hasData = totalGB > 0;
+                const usedCount = hasData ? Math.round((usedGB / totalGB) * TOTAL_CELLS) : 0;
+                if (!hasData) return { activity: Math.random() * 0.15 };
+                if (cellIdx < usedCount) {
+                  return { activity: Math.max(0.4, Math.min(1, 0.55 + Math.random() * 0.4 + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.08)) };
+              } else {
+                // COMMIT: committed memory (physical + swap/pagefile)
+                const hasData = totalGB > 0;
+                const commitRatio = hasData ? Math.min(commitGB / totalGB, 1.5) : 0;
+                const usedCount = Math.round((commitRatio / 1.5) * TOTAL_CELLS);
+                if (!hasData) return { activity: Math.random() * 0.15 };
+                if (cellIdx < usedCount) {
+                  const intensity = 0.4 + commitRatio * 0.4;
+                  return { activity: Math.max(0.3, Math.min(1, intensity + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.08)) };
               }
-              return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.08)) };
             }
 
             if (mode === "CPU") {
-              const coreCount = cpuPerCore.length;
-              if (coreCount === 0) return { activity: Math.random() * 0.15 };
-              // Each core gets TOTAL_CELLS/coreCount blocks
-              // Within a core's block, fill proportional to that core's load
-              const cellsPerCore = Math.floor(TOTAL_CELLS / coreCount);
-              const coreIdx = Math.min(Math.floor(cellIdx / cellsPerCore), coreCount - 1);
-              const coreLoad = cpuPerCore[coreIdx] ?? 0;
-              const posInCore = cellIdx - coreIdx * cellsPerCore;
-              const usedInCore = Math.round((coreLoad / 100) * cellsPerCore);
-              if (posInCore < usedInCore) {
-                const intensity = 0.5 + (coreLoad / 100) * 0.5;
-                return { activity: Math.max(0.4, Math.min(1, intensity + jitter)) };
+              if (viewMode === "PAGE") {
+                // PAGE: per-core utilization — each core gets its own block section
+                const coreCount = cpuPerCore.length;
+                if (coreCount === 0) return { activity: Math.random() * 0.15 };
+                const cellsPerCore = Math.floor(TOTAL_CELLS / coreCount);
+                const coreIdx = Math.min(Math.floor(cellIdx / cellsPerCore), coreCount - 1);
+                const coreLoad = cpuPerCore[coreIdx] ?? 0;
+                const posInCore = cellIdx - coreIdx * cellsPerCore;
+                const usedInCore = Math.round((coreLoad / 100) * cellsPerCore);
+                if (posInCore < usedInCore) {
+                  const intensity = 0.5 + (coreLoad / 100) * 0.5;
+                  return { activity: Math.max(0.4, Math.min(1, intensity + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.06)) };
+              } else {
+                // COMMIT: aggregate CPU load — all blocks filled proportionally
+                const usedCount = Math.round((cpuLoad / 100) * TOTAL_CELLS);
+                if (cellIdx < usedCount) {
+                  return { activity: Math.max(0.4, Math.min(1, 0.55 + Math.random() * 0.4 + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.06)) };
               }
-              return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.06)) };
             }
 
             if (mode === "GPU") {
-              const hasVram = gpuVramTotal > 0;
-              if (!hasVram && gpuLoad <= 0) return { activity: Math.random() * 0.15 };
-              // GPU: fill blocks proportional to GPU load %
-              const usedCount = Math.round((gpuLoad / 100) * TOTAL_CELLS);
-              if (cellIdx < usedCount) {
-                return { activity: Math.max(0.4, Math.min(1, 0.55 + Math.random() * 0.4 + jitter)) };
+              if (viewMode === "PAGE") {
+                // PAGE: GPU compute utilization
+                if (gpuLoad <= 0) return { activity: Math.random() * 0.15 };
+                const usedCount = Math.round((gpuLoad / 100) * TOTAL_CELLS);
+                if (cellIdx < usedCount) {
+                  return { activity: Math.max(0.4, Math.min(1, 0.55 + Math.random() * 0.4 + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.06)) };
+              } else {
+                // COMMIT: VRAM usage blocks
+                if (gpuVramTotal <= 0) return { activity: Math.random() * 0.15 };
+                const usedCount = Math.round((gpuVramUsed / gpuVramTotal) * TOTAL_CELLS);
+                if (cellIdx < usedCount) {
+                  return { activity: Math.max(0.4, Math.min(1, 0.55 + Math.random() * 0.4 + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
               }
-              return { activity: Math.max(0, Math.min(0.15, 0.04 + Math.random() * 0.06)) };
             }
 
-            // SSD mode — animated random pattern
-            return { activity: Math.random() * 0.6 + Math.random() * 0.4 * Math.sin(Date.now() / 500 + cellIdx * 0.3) * 0.5 + 0.25 };
+            // SSD mode
+            if (viewMode === "PAGE") {
+              // PAGE: read activity — intensity based on read speed
+              const maxSpeed = 200;
+              const readIntensity = Math.min(ssdRead / maxSpeed, 1);
+              const halfCells = TOTAL_CELLS / 2;
+              if (cellIdx < halfCells) {
+                // Top half: read
+                const filled = Math.round(readIntensity * halfCells);
+                if (cellIdx < filled) {
+                  return { activity: Math.max(0.4, Math.min(1, 0.5 + readIntensity * 0.5 + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
+              } else {
+                // Bottom half: write
+                const writeIntensity = Math.min(ssdWrite / maxSpeed, 1);
+                const filled = Math.round(writeIntensity * halfCells);
+                const posInHalf = cellIdx - halfCells;
+                if (posInHalf < filled) {
+                  return { activity: Math.max(0.4, Math.min(1, 0.5 + writeIntensity * 0.5 + jitter)) };
+                }
+                return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
+              }
+            } else {
+              // COMMIT: combined throughput view
+              const totalSpeed = ssdRead + ssdWrite;
+              const maxSpeed = 400;
+              const intensity = Math.min(totalSpeed / maxSpeed, 1);
+              const usedCount = Math.round(intensity * TOTAL_CELLS);
+              if (cellIdx < usedCount) {
+                return { activity: Math.max(0.4, Math.min(1, 0.5 + intensity * 0.5 + jitter)) };
+              }
+              return { activity: Math.max(0, Math.min(0.12, 0.03 + Math.random() * 0.06)) };
+            }
           })
         );
       });
     }, 800);
     return () => clearInterval(interval);
-  }, [mode, usedGB, totalGB, cpuPerCore, cpuLoad, gpuLoad, gpuVramUsed, gpuVramTotal]);
+  }, [mode, viewMode, usedGB, totalGB, commitGB, cpuPerCore, cpuLoad, gpuLoad, gpuVramUsed, gpuVramTotal, ssdRead, ssdWrite]);
 
   const modes: MatrixMode[] = ["SSD", "CPU", "RAM", "GPU"];
   const modeColors: Record<MatrixMode, string> = {
@@ -176,53 +245,128 @@ export function MemoryMatrix({
     GPU: "#00ff88",
   };
 
-  // Header + stats per mode
+  // Header + stats per mode per viewMode
   const coreCount = cpuPerCore.length;
   const modeInfo = (() => {
     switch (mode) {
       case "RAM": {
-        const usedCount = totalGB > 0 ? Math.round((usedGB / totalGB) * TOTAL_CELLS) : 0;
-        return {
-          header: sticks.length > 0 ? `${sticks.length} DIMMs // ${totalGB.toFixed(0)}GB` : `${TOTAL_CELLS} SLOTS`,
-          stats: totalGB > 0 ? {
-            left: `USED: ${usedCount}/${TOTAL_CELLS} BLOCKS (${usedGB.toFixed(1)}GB)`,
-            right: `FREE: ${TOTAL_CELLS - usedCount} (${(totalGB - usedGB).toFixed(1)}GB)`,
-          } : null,
-          legendLeft: "FREE",
-          legendRight: "USED",
-        };
+        if (viewMode === "PAGE") {
+          const usedCount = totalGB > 0 ? Math.round((usedGB / totalGB) * TOTAL_CELLS) : 0;
+          return {
+            header: sticks.length > 0 ? `${sticks.length} DIMMs // ${totalGB.toFixed(0)}GB` : `${TOTAL_CELLS} SLOTS`,
+            stats: totalGB > 0 ? {
+              left: `ACTIVE: ${usedCount}/${TOTAL_CELLS} (${usedGB.toFixed(1)}GB)`,
+              right: `FREE: ${TOTAL_CELLS - usedCount} (${(totalGB - usedGB).toFixed(1)}GB)`,
+            } : null,
+            legendLeft: "FREE",
+            legendRight: "ACTIVE",
+          };
+        } else {
+          const commitRatio = totalGB > 0 ? Math.min(commitGB / totalGB, 1.5) : 0;
+          const usedCount = Math.round((commitRatio / 1.5) * TOTAL_CELLS);
+          return {
+            header: `COMMIT ${commitGB.toFixed(1)}GB / ${totalGB.toFixed(0)}GB`,
+            stats: {
+              left: `COMMITTED: ${usedCount}/${TOTAL_CELLS} (${commitGB.toFixed(1)}GB)`,
+              right: `RATIO: ${(commitRatio * 100).toFixed(0)}% of RAM`,
+            },
+            legendLeft: "FREE",
+            legendRight: "COMMITTED",
+          };
+        }
       }
       case "CPU": {
-        const usedCount = Math.round((cpuLoad / 100) * TOTAL_CELLS);
-        return {
-          header: coreCount > 0 ? `${coreCount} THREADS // ${cpuLoad.toFixed(0)}% LOAD` : `${TOTAL_CELLS} SLOTS`,
-          stats: coreCount > 0 ? {
-            left: `ACTIVE: ${usedCount}/${TOTAL_CELLS} BLOCKS (${cpuLoad.toFixed(1)}%)`,
-            right: `${coreCount} CORES @ ${cpuPerCore.map(c => c.toFixed(0) + "%").join(" ")}`,
-          } : null,
-          legendLeft: "IDLE",
-          legendRight: "ACTIVE",
-        };
+        if (viewMode === "PAGE") {
+          const usedCount = Math.round((cpuLoad / 100) * TOTAL_CELLS);
+          return {
+            header: coreCount > 0 ? `${coreCount} THREADS // PER-CORE` : `${TOTAL_CELLS} SLOTS`,
+            stats: coreCount > 0 ? {
+              left: `LOAD: ${cpuLoad.toFixed(1)}% (${usedCount}/${TOTAL_CELLS})`,
+              right: cpuPerCore.map(c => c.toFixed(0) + "%").join(" "),
+            } : null,
+            legendLeft: "IDLE",
+            legendRight: "ACTIVE",
+          };
+        } else {
+          const usedCount = Math.round((cpuLoad / 100) * TOTAL_CELLS);
+          return {
+            header: `AGGREGATE // ${cpuLoad.toFixed(0)}% TOTAL`,
+            stats: {
+              left: `ACTIVE: ${usedCount}/${TOTAL_CELLS} BLOCKS`,
+              right: `${coreCount} THREADS COMBINED`,
+            },
+            legendLeft: "IDLE",
+            legendRight: "ACTIVE",
+          };
+        }
       }
       case "GPU": {
-        const usedCount = Math.round((gpuLoad / 100) * TOTAL_CELLS);
-        return {
-          header: gpuVramTotal > 0 ? `VRAM ${gpuVramUsed}/${gpuVramTotal}MB` : `GPU ${gpuLoad.toFixed(0)}% LOAD`,
-          stats: {
-            left: `ACTIVE: ${usedCount}/${TOTAL_CELLS} BLOCKS (${gpuLoad.toFixed(1)}%)`,
-            right: gpuVramTotal > 0 ? `VRAM: ${gpuVramUsed}MB / ${gpuVramTotal}MB` : "VRAM: ---",
-          },
-          legendLeft: "IDLE",
-          legendRight: "ACTIVE",
-        };
+        if (viewMode === "PAGE") {
+          const usedCount = Math.round((gpuLoad / 100) * TOTAL_CELLS);
+          return {
+            header: `COMPUTE // ${gpuLoad.toFixed(0)}% LOAD`,
+            stats: {
+              left: `ACTIVE: ${usedCount}/${TOTAL_CELLS} BLOCKS`,
+              right: `GPU UTILIZATION`,
+            },
+            legendLeft: "IDLE",
+            legendRight: "ACTIVE",
+          };
+        } else {
+          const usedCount = gpuVramTotal > 0 ? Math.round((gpuVramUsed / gpuVramTotal) * TOTAL_CELLS) : 0;
+          return {
+            header: `VRAM ${gpuVramUsed}/${gpuVramTotal}MB`,
+            stats: {
+              left: `USED: ${usedCount}/${TOTAL_CELLS} BLOCKS`,
+              right: gpuVramTotal > 0 ? `${((gpuVramUsed / gpuVramTotal) * 100).toFixed(1)}% VRAM` : "---",
+            },
+            legendLeft: "FREE",
+            legendRight: "USED",
+          };
+        }
       }
-      case "SSD":
-        return {
-          header: "DISK I/O ACTIVITY",
-          stats: null,
-          legendLeft: "LOW",
-          legendRight: "HIGH",
-        };
+      case "SSD": {
+        if (viewMode === "PAGE") {
+          return {
+            header: `R: ${ssdRead.toFixed(1)} / W: ${ssdWrite.toFixed(1)} MB/s`,
+            stats: {
+              left: `READ: ${ssdRead.toFixed(1)} MB/s (TOP)`,
+              right: `WRITE: ${ssdWrite.toFixed(1)} MB/s (BTM)`,
+            },
+            legendLeft: "LOW",
+            legendRight: "HIGH",
+          };
+        } else {
+          const totalSpeed = ssdRead + ssdWrite;
+          return {
+            header: `THROUGHPUT ${totalSpeed.toFixed(1)} MB/s`,
+            stats: {
+              left: `COMBINED: ${totalSpeed.toFixed(1)} MB/s`,
+              right: `R: ${ssdRead.toFixed(1)} + W: ${ssdWrite.toFixed(1)}`,
+            },
+            legendLeft: "LOW",
+            legendRight: "HIGH",
+          };
+        }
+      }
+    }
+  })();
+
+  // View mode labels per mode
+  const pageLabel = (() => {
+    switch (mode) {
+      case "RAM": return "PHYSICAL";
+      case "CPU": return "PER-CORE";
+      case "GPU": return "COMPUTE";
+      case "SSD": return "R / W";
+    }
+  })();
+  const commitLabel = (() => {
+    switch (mode) {
+      case "RAM": return "COMMIT";
+      case "CPU": return "AGGREGATE";
+      case "GPU": return "VRAM";
+      case "SSD": return "THROUGHPUT";
     }
   })();
 
@@ -249,35 +393,30 @@ export function MemoryMatrix({
         ))}
       </div>
 
-      {/* Mode label */}
-      <div style={{ fontFamily: "'Share Tech Mono', monospace", color: "#4a8aaa", fontSize: "11px" }}>
-        MODE: <span style={{ color: modeColors[mode] }}>{viewMode === "PAGE" ? "PAGE_ANALYSIS" : "COMMIT_ANALYSIS"}</span>
-      </div>
-
-      {/* Page / Commit tabs */}
+      {/* View mode tabs — context-aware labels */}
       <div className="flex gap-1">
-        {(["PAGE", "COMMIT"] as const).map((v) => (
+        {([["PAGE", pageLabel], ["COMMIT", commitLabel]] as const).map(([key, label]) => (
           <button
-            key={v}
-            onClick={() => setViewMode(v)}
+            key={key}
+            onClick={() => setViewMode(key as "PAGE" | "COMMIT")}
             className="flex-1 py-1 text-xs transition-all duration-200"
             style={{
               fontFamily: "'Share Tech Mono', monospace",
-              background: viewMode === v ? `${modeColors[mode]}33` : "rgba(0,15,30,0.8)",
-              border: `1px solid ${viewMode === v ? modeColors[mode] : "#1a3a5a"}`,
-              color: viewMode === v ? modeColors[mode] : "#2a5a7a",
-              boxShadow: viewMode === v ? `0 0 8px ${modeColors[mode]}44` : "none",
+              background: viewMode === key ? `${modeColors[mode]}33` : "rgba(0,15,30,0.8)",
+              border: `1px solid ${viewMode === key ? modeColors[mode] : "#1a3a5a"}`,
+              color: viewMode === key ? modeColors[mode] : "#2a5a7a",
+              boxShadow: viewMode === key ? `0 0 8px ${modeColors[mode]}44` : "none",
               clipPath: "polygon(3px 0%, calc(100% - 3px) 0%, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 0% calc(100% - 3px), 0% 3px)",
             }}
           >
-            ▶ {v}
+            ▶ {label}
           </button>
         ))}
       </div>
 
       {/* Header label */}
       <div
-        className="text-center py-1"
+        className="text-center py-0.5"
         style={{
           fontFamily: "'Share Tech Mono', monospace",
           color: "#2a6a8a",
@@ -311,10 +450,10 @@ export function MemoryMatrix({
             const color = activityColorForMode(cell.activity, mode);
             const isHot = cell.activity > 0.8;
 
-            // Core boundaries for CPU mode
             const cellsPerCore = coreCount > 0 ? Math.floor(TOTAL_CELLS / coreCount) : 0;
-            const isCpuBoundary = mode === "CPU" && cellsPerCore > 0 && cellIdx > 0 && cellIdx % cellsPerCore === 0 && ci === 0;
+            const isCpuBoundary = mode === "CPU" && viewMode === "PAGE" && cellsPerCore > 0 && cellIdx > 0 && cellIdx % cellsPerCore === 0 && ci === 0;
             const isRamBoundary = mode === "RAM" && dimmBoundaries.has(cellIdx) && ci === 0;
+            const isSsdBoundary = mode === "SSD" && viewMode === "PAGE" && cellIdx === TOTAL_CELLS / 2 && ci === 0;
 
             return (
               <div
@@ -324,7 +463,7 @@ export function MemoryMatrix({
                   background: color,
                   boxShadow: isHot ? `0 0 4px ${color}` : "none",
                   minHeight: "6px",
-                  borderTop: (isCpuBoundary || isRamBoundary) ? `1px solid ${modeColors[mode]}66` : "none",
+                  borderTop: (isCpuBoundary || isRamBoundary || isSsdBoundary) ? `1px solid ${modeColors[mode]}66` : "none",
                 }}
               />
             );

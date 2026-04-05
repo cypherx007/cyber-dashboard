@@ -732,12 +732,15 @@ export default function App() {
             <MemoryMatrix
               usedGB={ramUsed}
               totalGB={ramTotal}
+              commitGB={ramCommit}
               sticks={ramSticks}
               cpuPerCore={cpuPerCore}
               cpuLoad={cpuVal}
               gpuLoad={gpuVal}
               gpuVramUsed={gpuVram}
               gpuVramTotal={gpuVramTotal}
+              ssdRead={ssdRead}
+              ssdWrite={ssdWrite}
             />
           </div>
 
