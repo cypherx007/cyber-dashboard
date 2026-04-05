@@ -1,0 +1,46 @@
+{
+  "name": "cyber-dashboard",
+  "version": "1.0.0",
+  "description": "Cyberpunk System Performance Monitor",
+  "main": "main.cjs",
+  "author": "cypherox",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "express": "4.19.2",
+    "cors": "2.8.5",
+    "systeminformation": "5.23.5"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.cypherox.cyber-dashboard",
+    "productName": "Cyber Dashboard",
+    "win": {
+      "target": "nsis",
+      "icon": null
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "dist/**/*",
+      "server/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "server/disk-io.ps1",
+        "to": "server/disk-io.ps1"
+      }
+    ],
+    "asar": true
+  }
+}
