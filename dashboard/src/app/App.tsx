@@ -595,24 +595,9 @@ export default function App() {
           )}
         </div>
 
-        {/* Right: Live indicator + window controls */}
+        {/* Right: Live indicator */}
         <div className="flex items-center gap-3">
           <LiveIndicator />
-          <div className="flex items-center gap-2 ml-2">
-            {["━", "⬜", "✕"].map((sym, i) => (
-              <button
-                key={sym}
-                className="w-5 h-5 flex items-center justify-center text-xs transition-all"
-                style={{
-                  color: ["#4a7a9a", "#4a7a9a", "#aa4444"][i],
-                  background: "transparent",
-                  border: "none",
-                }}
-              >
-                {sym}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
